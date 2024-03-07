@@ -5,3 +5,4 @@ output
 .vscode
 src/tasks/test*.ts
 src/test_scripts
+.env

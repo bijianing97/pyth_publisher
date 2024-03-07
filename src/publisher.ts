@@ -31,10 +31,17 @@ type PublisherConfig = {
 
 export class Publisher extends EventEmitter {
   private providers: Record<string, Provider> = {};
+
   private subscriptionToProduct: Map<number, ProductWithsubscription> =
     new Map();
   private symbolToRoatio: Record<string, Record<string, number>>;
+
+  private resolves = new Set<() => void>();
+  private coingeckoUpdateLoop: Promise<void> | undefined;
+  private coinmarketUpdateLoop: Promise<void> | undefined;
+
   private confidenceRatioBps: number;
+  private stopped = false;
   rpcjson: JSONRPCWebSocket;
 
   constructor(config: PublisherConfig) {
@@ -53,12 +60,13 @@ export class Publisher extends EventEmitter {
     if (ratioInfo === undefined) {
       throw new Error(`unknown symbol: ${symbol}`);
     }
+    const denominator = Object.values(ratioInfo).reduce((a, b) => a + b, 0);
     for (const [provider, ratio] of Object.entries(ratioInfo)) {
       const providerPrice = this.providers[provider].latestPrice(symbol);
       if (providerPrice === undefined) {
         throw new Error(`Can't get price from ${provider} for ${symbol}`);
       }
-      price = price.add(providerPrice.mul(ratio).div(100));
+      price = price.add(providerPrice.mul(ratio).div(denominator));
       priceInfo[provider] = { ratio, price: providerPrice };
     }
     return { price, priceInfo };
@@ -71,9 +79,7 @@ export class Publisher extends EventEmitter {
     conf: number,
     status: string
   ) {
-    await this.rpcjson.request("update_price", [
-      { account: account, price: price, conf: conf, status: status },
-    ]);
+    await this.rpcjson.request("update_price", [account, price, conf, status]);
   }
 
   private async getProductList() {
@@ -83,8 +89,8 @@ export class Publisher extends EventEmitter {
       const product = {
         productAccount: coin.account,
         symbol: coin.attr_dict.symbol,
-        priceAccount: coin.prices[0].account,
-        expoent: coin.prices[0].price_exponent,
+        priceAccount: coin.price[0].account,
+        expoent: coin.price[0].price_exponent,
       };
       products.push(product);
     }
@@ -93,7 +99,7 @@ export class Publisher extends EventEmitter {
 
   private async subscribePriceSched(account: string) {
     const result = await this.rpcjson.request("subscribe_price_sched", [
-      { account: account },
+      account,
     ]);
     return result.subscription;
   }
@@ -103,6 +109,8 @@ export class Publisher extends EventEmitter {
       logger.warn(`unexpected method: ${method}`);
       return;
     }
+
+    params as { subscription: number };
 
     logger.info(
       "Get price schedule notify  subscription is:",
@@ -149,13 +157,50 @@ export class Publisher extends EventEmitter {
     );
   }
 
+  private async loop(interval: number, fn: () => Promise<void>) {
+    try {
+      await fn();
+    } catch (err) {
+      logger.error("catch error:", err);
+    }
+
+    while (!this.stopped) {
+      const now = Math.floor(Date.now() / 1000);
+      const next = Math.ceil(now / interval) * interval;
+
+      logger.info("interval:", next - now, "next:", next);
+
+      let _r!: () => void;
+
+      await new Promise<void>((r) => {
+        this.resolves.add((_r = r));
+        setTimeout(r, (next - now) * 1000);
+      }).finally(() => this.resolves.delete(_r));
+
+      if (this.stopped) {
+        break;
+      }
+
+      try {
+        await fn();
+      } catch (err) {
+        logger.error("catch error:", err);
+      }
+
+      // sleep a while...
+      await new Promise<void>((r) => setTimeout(r, 10));
+    }
+  }
+
   async init() {
+    this.rpcjson.start();
+
     const products = await this.getProductList();
     const symbolsToSubscribe = Object.keys(this.symbolToRoatio);
     for (const product of products) {
       if (symbolsToSubscribe.includes(product.symbol)) {
         const subscription = await this.subscribePriceSched(
-          product.productAccount
+          product.priceAccount
         );
         this.subscriptionToProduct.set(subscription, {
           ...product,
@@ -163,5 +208,32 @@ export class Publisher extends EventEmitter {
         });
       }
     }
+
+    this.rpcjson.on("notify", this.onNotify.bind(this));
+  }
+
+  start() {
+    this.coingeckoUpdateLoop = this.loop(
+      this.providers.coingecko.updateInterval,
+      () => this.providers.coingecko.updatePrice()
+    );
+
+    this.coinmarketUpdateLoop = this.loop(
+      this.providers.coinmarket.updateInterval,
+      () => this.providers.coinmarket.updatePrice()
+    );
+  }
+
+  async stop() {
+    this.stopped = true;
+
+    this.resolves.forEach((r) => r());
+
+    await this.coingeckoUpdateLoop;
+
+    await this.coinmarketUpdateLoop;
+
+    this.rpcjson.off("notify", this.onNotify);
+    this.rpcjson.stop();
   }
 }
