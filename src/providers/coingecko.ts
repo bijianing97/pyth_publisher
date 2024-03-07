@@ -2,23 +2,21 @@ import axios from "axios";
 import Decimal from "decimal.js";
 import { Provider } from "./Iprovider";
 
-type Product = {
+type Coin = {
   pythSymbol: string;
   coingeckoId: string;
   coingeckoVcCurrencie: string;
 };
 
-type CoingeckoConfig = {
-  products: Product[];
+export type CoingeckoConfig = {
+  coins: Coin[];
   coingeckoApiKey: string;
-  confidenceRatioBps: number;
   coingeckoUpdateInterval: number;
 };
 
 export class CoingeckoProvider implements Provider {
-  private symbolToProduct: Map<string, Product> = new Map();
+  private symbolToCoin: Map<string, Coin> = new Map();
   private apiKey: string;
-  private confidenceRatioBps: number;
   private prices: Map<string, Decimal> = new Map();
 
   updateInterval: number;
@@ -26,17 +24,16 @@ export class CoingeckoProvider implements Provider {
   constructor(config: CoingeckoConfig) {
     this.apiKey = config.coingeckoApiKey;
     this.updateInterval = config.coingeckoUpdateInterval;
-    this.confidenceRatioBps = config.confidenceRatioBps;
-    for (const product of config.products) {
-      this.symbolToProduct.set(product.pythSymbol, product);
+    for (const coin of config.coins) {
+      this.symbolToCoin.set(coin.pythSymbol, coin);
     }
   }
 
   async updatePrice() {
-    const ids = Array.from(this.symbolToProduct.values()).map(
+    const ids = Array.from(this.symbolToCoin.values()).map(
       (p) => p.coingeckoId
     );
-    const vsCurrencies = Array.from(this.symbolToProduct.values()).map(
+    const vsCurrencies = Array.from(this.symbolToCoin.values()).map(
       (p) => p.coingeckoVcCurrencie
     );
     const vsCurrenciesSet = new Set(vsCurrencies);
@@ -45,7 +42,7 @@ export class CoingeckoProvider implements Provider {
       Array.from(vsCurrenciesSet),
       "18"
     );
-    for (const [symbol, product] of this.symbolToProduct.entries()) {
+    for (const [symbol, product] of this.symbolToCoin.entries()) {
       const price = new Decimal(
         prices[product.coingeckoId][product.coingeckoVcCurrencie]
       );
@@ -55,13 +52,7 @@ export class CoingeckoProvider implements Provider {
 
   latestPrice(symbol: string) {
     const price = this.prices.get(symbol);
-    if (price === undefined) {
-      return { price: new Decimal(0), confidence_ratio_bps: new Decimal(0) };
-    }
-    return {
-      price: price,
-      confidence_ratio_bps: price.mul(this.confidenceRatioBps).div(10000),
-    };
+    return price;
   }
 
   async getPriceFromApi(

@@ -1,72 +1,167 @@
 import { logger } from "./logger/logger";
-import { Pyth } from "./pyth";
-import { Provider } from "./providers";
+import EventEmitter from "events";
+import {
+  Provider,
+  CoingeckoConfig,
+  CoinmarketConfig,
+  CoingeckoProvider,
+  CoinmarketProvider,
+} from "./providers";
+import { JSONRPCWebSocket, WebSocket } from "./jsonRpcWebsoket";
+import Decimal from "decimal.js";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 type Product = {
   symbol: string;
-  product_account: string;
-  price_account: string;
-  exponent: number;
-  subscription_id: number | undefined;
+  productAccount: string;
+  priceAccount: string;
+  expoent: number;
 };
 
-export class Publisher {
-  private subscriptions: Map<number, Product> = new Map();
-  private products: Product[] = [];
-  private pyth: Pyth;
-  private resolves = new Set<() => void>();
-  private stopped = false;
-  private providers: Provider[] = [];
+type ProductWithsubscription = Product & { subscription?: number };
 
-  constructor(endpoint: string) {
-    this.pyth = new Pyth(endpoint, this.on_notify_price_sched.bind(this));
+type PublisherConfig = {
+  url: string;
+  confidenceRatioBps: number;
+  pythSymbolToRatio: Record<string, Record<string, number>>;
+  coingecko: CoingeckoConfig;
+  coinmarket: CoinmarketConfig;
+};
+
+export class Publisher extends EventEmitter {
+  private providers: Record<string, Provider> = {};
+  private subscriptionToProduct: Map<number, ProductWithsubscription> =
+    new Map();
+  private symbolToRoatio: Record<string, Record<string, number>>;
+  private confidenceRatioBps: number;
+  rpcjson: JSONRPCWebSocket;
+
+  constructor(config: PublisherConfig) {
+    super();
+    this.confidenceRatioBps = config.confidenceRatioBps;
+    this.rpcjson = new JSONRPCWebSocket(new WebSocket({ url: config.url }));
+    this.symbolToRoatio = config.pythSymbolToRatio;
+    this.providers.coingecko = new CoingeckoProvider(config.coingecko);
+    this.providers.coinmarket = new CoinmarketProvider(config.coinmarket);
   }
 
-  async on_notify_price_sched(subscription: number) {
-    logger.info("subscribing to notify_price_sched");
-
-    const newSubscriptions: typeof this.subscriptions = new Map();
-
-    for (const product of this.products) {
-      const subscription_id = await this.pyth.subscribe_price_sched(
-        product.price_account
-      );
-      product.subscription_id = subscription_id;
-      newSubscriptions.set(subscription_id, product);
+  mixLatestPrice(symbol: string) {
+    let price = new Decimal(0);
+    const priceInfo: Record<string, { ratio: number; price: Decimal }> = {};
+    const ratioInfo = this.symbolToRoatio[symbol];
+    if (ratioInfo === undefined) {
+      throw new Error(`unknown symbol: ${symbol}`);
     }
-    this.subscriptions = newSubscriptions;
-  }
-
-  private async loop(interval: number, fn: () => Promise<void>) {
-    while (!this.stopped) {
-      const now = Math.floor(Date.now() / 1000);
-      const next = Math.ceil(now / interval) * interval;
-
-      logger.info("Pubulisher", "interval:", next - now, "next:", next);
-
-      let _r!: () => void;
-
-      await new Promise<void>((r) => {
-        this.resolves.add((_r = r));
-        setTimeout(r, (next - now) * 1000);
-      }).finally(() => this.resolves.delete(_r));
-
-      if (this.stopped) {
-        break;
+    for (const [provider, ratio] of Object.entries(ratioInfo)) {
+      const providerPrice = this.providers[provider].latestPrice(symbol);
+      if (providerPrice === undefined) {
+        throw new Error(`Can't get price from ${provider} for ${symbol}`);
       }
-
-      try {
-        await fn();
-      } catch (err) {
-        logger.error("Pubulisher", "catch error:", err);
-      }
-
-      // sleep a while...
-      await new Promise<void>((r) => setTimeout(r, 1000));
+      price = price.add(providerPrice.mul(ratio).div(100));
+      priceInfo[provider] = { ratio, price: providerPrice };
     }
+    return { price, priceInfo };
   }
 
-  async start() {
-    this.pyth.connect();
+  // jsonRpc methods
+  private async updatePrice(
+    account: string,
+    price: number,
+    conf: number,
+    status: string
+  ) {
+    await this.rpcjson.request("update_price", [
+      { account: account, price: price, conf: conf, status: status },
+    ]);
+  }
+
+  private async getProductList() {
+    const result = await this.rpcjson.request("get_product_list", []);
+    const products: Product[] = [];
+    for (const coin of result) {
+      const product = {
+        productAccount: coin.account,
+        symbol: coin.attr_dict.symbol,
+        priceAccount: coin.prices[0].account,
+        expoent: coin.prices[0].price_exponent,
+      };
+      products.push(product);
+    }
+    return products;
+  }
+
+  private async subscribePriceSched(account: string) {
+    const result = await this.rpcjson.request("subscribe_price_sched", [
+      { account: account },
+    ]);
+    return result.subscription;
+  }
+
+  private async onNotify(method: string, params: any) {
+    if (method !== "notify_price_sched") {
+      logger.warn(`unexpected method: ${method}`);
+      return;
+    }
+
+    logger.info(
+      "Get price schedule notify  subscription is:",
+      params.subscription
+    );
+
+    const product = this.subscriptionToProduct.get(params.subscription);
+    if (product === undefined) {
+      logger.warn(`unknown subscription: ${params.subscription}`);
+      return;
+    }
+    let priceResult: {
+      price: Decimal;
+      priceInfo: Record<string, { ratio: number; price: Decimal }>;
+    };
+    try {
+      priceResult = this.mixLatestPrice(product.symbol);
+    } catch (err) {
+      logger.error("mixLatestPrice error:", err);
+      return;
+    }
+
+    // Scale the price and confidence interval using the Pyth exponent
+    const scalePrice = priceResult.price.mul(10 ** -product.expoent);
+    const scaleConf = priceResult.price
+      .mul(this.confidenceRatioBps)
+      .div(10000)
+      .mul(10 ** -product.expoent);
+
+    logger.info(
+      `sending update_price price for ${
+        product.symbol
+      } price: ${scalePrice} conf: ${scaleConf} product_account: ${
+        product.productAccount
+      } price_account: ${product.priceAccount}
+       mixed price info: ${JSON.stringify(priceResult.priceInfo)}`
+    );
+
+    await this.updatePrice(
+      product.priceAccount,
+      scalePrice.toNumber(),
+      scaleConf.toNumber(),
+      "trading"
+    );
+  }
+
+  async init() {
+    const products = await this.getProductList();
+    const symbolsToSubscribe = Object.keys(this.symbolToRoatio);
+    for (const product of products) {
+      if (symbolsToSubscribe.includes(product.symbol)) {
+        const subscription = await this.subscribePriceSched(
+          product.productAccount
+        );
+        this.subscriptionToProduct.set(subscription, {
+          ...product,
+          subscription,
+        });
+      }
+    }
   }
 }

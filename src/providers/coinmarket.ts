@@ -3,45 +3,42 @@ import axios from "axios";
 import { Provider } from "./Iprovider";
 import Decimal from "decimal.js";
 
-type Product = {
+type Coin = {
   pythSymbol: string;
   coinmarketSymbol: string;
   coinmarketConvert: string;
 };
 
-type CoinmarketConfig = {
-  products: Product[];
+export type CoinmarketConfig = {
+  coins: Coin[];
   coinmarketApiKey: string;
-  confidenceRatioBps: number;
   coinmarketUpdateInterval: number;
 };
 
 export class CoinmarketProvider implements Provider {
-  private symbolToProduct: Map<string, Product> = new Map();
+  private symbolToCoin: Map<string, Coin> = new Map();
   private apiKey: string;
-  private confidenceRatioBps: number;
   private prices: Map<string, Decimal> = new Map();
   updateInterval: number;
 
   constructor(config: CoinmarketConfig) {
     this.apiKey = config.coinmarketApiKey;
     this.updateInterval = config.coinmarketUpdateInterval;
-    this.confidenceRatioBps = config.confidenceRatioBps;
-    for (const product of config.products) {
-      this.symbolToProduct.set(product.pythSymbol, product);
+    for (const coin of config.coins) {
+      this.symbolToCoin.set(coin.pythSymbol, coin);
     }
   }
 
   async updatePrice() {
-    const symbols = Array.from(this.symbolToProduct.values()).map(
+    const symbols = Array.from(this.symbolToCoin.values()).map(
       (p) => p.coinmarketSymbol
     );
-    const converts = Array.from(this.symbolToProduct.values()).map(
+    const converts = Array.from(this.symbolToCoin.values()).map(
       (p) => p.coinmarketConvert
     );
     const convetsSet = new Set(converts);
     const prices = await this.getPriceFromApi(symbols, Array.from(convetsSet));
-    for (const [symbol, product] of this.symbolToProduct.entries()) {
+    for (const [symbol, product] of this.symbolToCoin.entries()) {
       const price = new Decimal(
         prices[product.coinmarketSymbol][product.coinmarketConvert]
       );
@@ -51,13 +48,7 @@ export class CoinmarketProvider implements Provider {
 
   latestPrice(symbol: string) {
     const price = this.prices.get(symbol);
-    if (price === undefined) {
-      return { price: new Decimal(0), confidence_ratio_bps: new Decimal(0) };
-    }
-    return {
-      price: price,
-      confidence_ratio_bps: price.mul(this.confidenceRatioBps).div(10000),
-    };
+    return price;
   }
 
   async getPriceFromApi(symbols: string[], vs_currencies: string[]) {
