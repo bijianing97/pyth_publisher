@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import axios from "axios";
+import { Provider } from "./Iprovider";
 
 export class CoinMarketProvider {
   private apiKey: string;
@@ -38,10 +39,10 @@ export class CoinMarketProvider {
   }
 }
 
-// async function main() {
-//   const provider = new CoinMarketProvider("");
-//   const data = await provider.getPrice(["BTC", "ETH"], ["USD", "BTC"]);
-//   console.log(data);
-// }
+async function main() {
+  const provider = new CoinMarketProvider("");
+  const data = await provider.getPrice(["BTC", "ETH"], ["USD", "BTC"]);
+  console.log(data);
+}
 
-// main();
+main();
