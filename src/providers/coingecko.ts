@@ -3,19 +3,19 @@ import Decimal from "decimal.js";
 import { Provider } from "./Iprovider";
 
 type Product = {
-  symbol: string; //pythSymbol
-  id: string; //coingeckoId
-  vs_currencie: string; //coingeckoVsCurrencie
+  pythSymbol: string;
+  coingeckoId: string;
+  coingeckoVcCurrencie: string;
 };
 
 type CoingeckoConfig = {
   products: Product[];
-  apiKey: string;
+  coingeckoApiKey: string;
   confidenceRatioBps: number;
-  updateInterval: number;
+  coingeckoUpdateInterval: number;
 };
 
-export class CoinGeckoProvider implements Provider {
+export class CoingeckoProvider implements Provider {
   private symbolToProduct: Map<string, Product> = new Map();
   private apiKey: string;
   private confidenceRatioBps: number;
@@ -24,27 +24,31 @@ export class CoinGeckoProvider implements Provider {
   updateInterval: number;
 
   constructor(config: CoingeckoConfig) {
-    this.apiKey = config.apiKey;
-    this.updateInterval = config.updateInterval;
+    this.apiKey = config.coingeckoApiKey;
+    this.updateInterval = config.coingeckoUpdateInterval;
     this.confidenceRatioBps = config.confidenceRatioBps;
     for (const product of config.products) {
-      this.symbolToProduct.set(product.symbol, product);
+      this.symbolToProduct.set(product.pythSymbol, product);
     }
   }
 
   async updatePrice() {
-    const ids = Array.from(this.symbolToProduct.values()).map((p) => p.id);
-    const vs_currencies = Array.from(this.symbolToProduct.values()).map(
-      (p) => p.vs_currencie
+    const ids = Array.from(this.symbolToProduct.values()).map(
+      (p) => p.coingeckoId
     );
-    const vs_currenciesSet = new Set(vs_currencies);
+    const vsCurrencies = Array.from(this.symbolToProduct.values()).map(
+      (p) => p.coingeckoVcCurrencie
+    );
+    const vsCurrenciesSet = new Set(vsCurrencies);
     const prices = await this.getPriceFromApi(
       ids,
-      Array.from(vs_currenciesSet),
+      Array.from(vsCurrenciesSet),
       "18"
     );
     for (const [symbol, product] of this.symbolToProduct.entries()) {
-      const price = new Decimal(prices[product.id][product.vs_currencie]);
+      const price = new Decimal(
+        prices[product.coingeckoId][product.coingeckoVcCurrencie]
+      );
       this.prices.set(symbol, price);
     }
   }
@@ -89,7 +93,7 @@ export class CoinGeckoProvider implements Provider {
 
 // async function main() {
 //   const provider = new CoinGeckoProvider("");
-//   const price = await provider.simplePrice(["bitcoin"], ["usd,eth"], "18");
+//   const price = await provider.getPriceFromApi(["bitcoin"], ["usd,eth"], "18");
 //   console.log(price);
 // }
 

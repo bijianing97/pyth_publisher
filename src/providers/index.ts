@@ -1,3 +1,3 @@
 export * from "./Iprovider";
 export * from "./coinmarket";
-export * from "./coingeko";
+export * from "./coingecko";
