@@ -8,7 +8,6 @@ async function main() {
   providerConfig.coingecko.coingeckoApiKey = process.env.coingeckoApi!;
   providerConfig.coinmarket.coinmarketApiKey = process.env.coinmarketApi!;
   const publisher = new Publisher(providerConfig);
-  await publisher.init();
   publisher.start();
 }
 

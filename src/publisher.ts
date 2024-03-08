@@ -42,12 +42,12 @@ export class Publisher extends EventEmitter {
 
   private confidenceRatioBps: number;
   private stopped = false;
-  rpcjson: JSONRPCWebSocket;
+  jsonrpc: JSONRPCWebSocket;
 
   constructor(config: PublisherConfig) {
     super();
     this.confidenceRatioBps = config.confidenceRatioBps;
-    this.rpcjson = new JSONRPCWebSocket(new WebSocket({ url: config.url }));
+    this.jsonrpc = new JSONRPCWebSocket(new WebSocket({ url: config.url }));
     this.symbolToRoatio = config.pythSymbolToRatio;
     this.providers.coingecko = new CoingeckoProvider(config.coingecko);
     this.providers.coinmarket = new CoinmarketProvider(config.coinmarket);
@@ -79,11 +79,11 @@ export class Publisher extends EventEmitter {
     conf: number,
     status: string
   ) {
-    await this.rpcjson.request("update_price", [account, price, conf, status]);
+    await this.jsonrpc.request("update_price", [account, price, conf, status]);
   }
 
   private async getProductList() {
-    const result = await this.rpcjson.request("get_product_list", []);
+    const result = await this.jsonrpc.request("get_product_list", []);
     const products: Product[] = [];
     for (const coin of result) {
       const product = {
@@ -98,7 +98,7 @@ export class Publisher extends EventEmitter {
   }
 
   private async subscribePriceSched(account: string) {
-    const result = await this.rpcjson.request("subscribe_price_sched", [
+    const result = await this.jsonrpc.request("subscribe_price_sched", [
       account,
     ]);
     return result.subscription;
@@ -157,6 +157,27 @@ export class Publisher extends EventEmitter {
     );
   }
 
+  private async onConneted() {
+    try {
+      const products = await this.getProductList();
+      const symbolsToSubscribe = Object.keys(this.symbolToRoatio);
+      for (const product of products) {
+        if (symbolsToSubscribe.includes(product.symbol)) {
+          const subscription = await this.subscribePriceSched(
+            product.priceAccount
+          );
+          this.subscriptionToProduct.set(subscription, {
+            ...product,
+            subscription,
+          });
+        }
+      }
+    } catch (err) {
+      logger.error("Publisher", "subscribe price sched error", err);
+      this.jsonrpc.ws.reconnect();
+    }
+  }
+
   private async loop(interval: number, fn: () => Promise<void>) {
     try {
       await fn();
@@ -192,26 +213,6 @@ export class Publisher extends EventEmitter {
     }
   }
 
-  async init() {
-    this.rpcjson.start();
-
-    const products = await this.getProductList();
-    const symbolsToSubscribe = Object.keys(this.symbolToRoatio);
-    for (const product of products) {
-      if (symbolsToSubscribe.includes(product.symbol)) {
-        const subscription = await this.subscribePriceSched(
-          product.priceAccount
-        );
-        this.subscriptionToProduct.set(subscription, {
-          ...product,
-          subscription,
-        });
-      }
-    }
-
-    this.rpcjson.on("notify", this.onNotify.bind(this));
-  }
-
   start() {
     this.coingeckoUpdateLoop = this.loop(
       this.providers.coingecko.updateInterval,
@@ -222,6 +223,10 @@ export class Publisher extends EventEmitter {
       this.providers.coinmarket.updateInterval,
       () => this.providers.coinmarket.updatePrice()
     );
+
+    this.jsonrpc.start();
+    this.jsonrpc.on("notify", this.onNotify.bind(this));
+    this.jsonrpc.on("connected", this.onConneted.bind(this));
   }
 
   async stop() {
@@ -233,7 +238,8 @@ export class Publisher extends EventEmitter {
 
     await this.coinmarketUpdateLoop;
 
-    this.rpcjson.off("notify", this.onNotify);
-    this.rpcjson.stop();
+    this.jsonrpc.off("notify", this.onNotify);
+    this.jsonrpc.off("connected", this.onConneted);
+    this.jsonrpc.stop();
   }
 }
