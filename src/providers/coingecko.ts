@@ -19,12 +19,12 @@ export class CoingeckoProvider implements Provider {
   private symbolToCoin: Map<string, Coin> = new Map();
   private apiKey: string;
   private prices: Map<string, Decimal> = new Map();
+  private updateInterval: number;
 
   private resolves = new Set<() => void>();
   private stopped = false;
   private coingeckoUpdateLoop: Promise<void> = Promise.resolve();
-
-  private updateInterval: number;
+  private count = 0;
 
   constructor(config: CoingeckoConfig) {
     this.apiKey = config.coingeckoApiKey;
@@ -53,7 +53,7 @@ export class CoingeckoProvider implements Provider {
       );
       this.prices.set(symbol, price);
     }
-    logger.info("CoingeckoProvider", "updatePrice", this.prices);
+    logger.info("CoingeckoProvider", "updatePrice", this.prices, this.count);
   }
 
   latestPrice(symbol: string) {
@@ -119,6 +119,7 @@ export class CoingeckoProvider implements Provider {
 
       // sleep a while...
       await new Promise<void>((r) => setTimeout(r, 1000));
+      this.count++;
     }
   }
 

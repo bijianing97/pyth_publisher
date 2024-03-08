@@ -28,6 +28,7 @@ export class ContractsProvider implements Provider {
   private orcaleLoopList: Promise<void>[] = [];
   private resolves = new Set<() => void>();
   private stopped = false;
+  private count = 0;
 
   constructor(config: CointractsConfig) {
     for (const coin of config.coins) {
@@ -47,7 +48,13 @@ export class ContractsProvider implements Provider {
     const twap = (await oracle.getAverages()).twap;
     const twapDecimal = new Decimal(twap.toSignificant(6));
     this.prices.set(symol, twapDecimal);
-    logger.info("ContractsProvider", "updateTwap", symol, twapDecimal);
+    logger.info(
+      "ContractsProvider",
+      "updateTwap",
+      symol,
+      twapDecimal,
+      this.count
+    );
   }
 
   private async loop(interval: number, fn: () => Promise<void>) {
@@ -82,6 +89,7 @@ export class ContractsProvider implements Provider {
 
       // sleep a while...
       await new Promise<void>((r) => setTimeout(r, 1000));
+      this.count++;
     }
   }
 

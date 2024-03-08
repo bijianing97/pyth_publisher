@@ -25,6 +25,7 @@ export class CoinmarketProvider implements Provider {
   private resolves = new Set<() => void>();
   private stopped = false;
   private coinmarketUpdateLoop: Promise<void> = Promise.resolve();
+  private count = 0;
 
   constructor(config: CoinmarketConfig) {
     this.apiKey = config.coinmarketApiKey;
@@ -49,7 +50,7 @@ export class CoinmarketProvider implements Provider {
       );
       this.prices.set(symbol, price);
     }
-    logger.info("CoinmarketProvider", "updatePrice", this.prices);
+    logger.info("CoinmarketProvider", "updatePrice", this.prices, this.count);
   }
 
   latestPrice(symbol: string) {
@@ -119,6 +120,7 @@ export class CoinmarketProvider implements Provider {
 
       // sleep a while...
       await new Promise<void>((r) => setTimeout(r, 1000));
+      this.count++;
     }
   }
 
