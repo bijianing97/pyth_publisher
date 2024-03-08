@@ -20,7 +20,11 @@ export class CoingeckoProvider implements Provider {
   private apiKey: string;
   private prices: Map<string, Decimal> = new Map();
 
-  updateInterval: number;
+  private resolves = new Set<() => void>();
+  private stopped = false;
+  private coingeckoUpdateLoop: Promise<void> = Promise.resolve();
+
+  private updateInterval: number;
 
   constructor(config: CoingeckoConfig) {
     this.apiKey = config.coingeckoApiKey;
@@ -81,6 +85,54 @@ export class CoingeckoProvider implements Provider {
     );
 
     return response.data;
+  }
+
+  private async loop(interval: number, fn: () => Promise<void>) {
+    try {
+      await fn();
+    } catch (err) {
+      logger.error("catch error:", err);
+    }
+
+    while (!this.stopped) {
+      const now = Math.floor(Date.now() / 1000);
+      const next = Math.ceil(now / interval) * interval;
+
+      logger.info("interval:", next - now, "next:", next);
+
+      let _r!: () => void;
+
+      await new Promise<void>((r) => {
+        this.resolves.add((_r = r));
+        setTimeout(r, (next - now) * 1000);
+      }).finally(() => this.resolves.delete(_r));
+
+      if (this.stopped) {
+        break;
+      }
+
+      try {
+        await fn();
+      } catch (err) {
+        logger.error("catch error:", err);
+      }
+
+      // sleep a while...
+      await new Promise<void>((r) => setTimeout(r, 10));
+    }
+  }
+
+  start() {
+    this.coingeckoUpdateLoop = this.loop(
+      this.updateInterval,
+      this.updatePrice.bind(this)
+    );
+  }
+
+  async stop() {
+    this.stopped = true;
+    this.resolves.forEach((r) => r());
+    await this.coingeckoUpdateLoop;
   }
 }
 

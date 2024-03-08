@@ -4,8 +4,10 @@ import {
   Provider,
   CoingeckoConfig,
   CoinmarketConfig,
+  CointractsConfig,
   CoingeckoProvider,
   CoinmarketProvider,
+  ContractsProvider,
 } from "./providers";
 import { JSONRPCWebSocket, WebSocket } from "./jsonRpcWebsoket";
 import Decimal from "decimal.js";
@@ -25,8 +27,9 @@ type PublisherConfig = {
   url: string;
   confidenceRatioBps: number;
   pythSymbolToRatio: Record<string, Record<string, number>>;
-  coingecko: CoingeckoConfig;
-  coinmarket: CoinmarketConfig;
+  coingecko?: CoingeckoConfig;
+  coinmarket?: CoinmarketConfig;
+  contracts?: CointractsConfig;
 };
 
 export class Publisher extends EventEmitter {
@@ -35,10 +38,6 @@ export class Publisher extends EventEmitter {
   private subscriptionToProduct: Map<number, ProductWithsubscription> =
     new Map();
   private symbolToRoatio: Record<string, Record<string, number>>;
-
-  private resolves = new Set<() => void>();
-  private coingeckoUpdateLoop: Promise<void> | undefined;
-  private coinmarketUpdateLoop: Promise<void> | undefined;
 
   private confidenceRatioBps: number;
   private stopped = false;
@@ -49,25 +48,50 @@ export class Publisher extends EventEmitter {
     this.confidenceRatioBps = config.confidenceRatioBps;
     this.jsonrpc = new JSONRPCWebSocket(new WebSocket({ url: config.url }));
     this.symbolToRoatio = config.pythSymbolToRatio;
-    this.providers.coingecko = new CoingeckoProvider(config.coingecko);
-    this.providers.coinmarket = new CoinmarketProvider(config.coinmarket);
+
+    if (config.coingecko) {
+      this.providers.coingecko = new CoingeckoProvider(config.coingecko);
+    }
+    if (config.coinmarket) {
+      this.providers.coinmarket = new CoinmarketProvider(config.coinmarket);
+    }
+    if (config.contracts) {
+      this.providers.contracts = new ContractsProvider(config.contracts);
+    }
   }
 
   mixLatestPrice(symbol: string) {
     let price = new Decimal(0);
-    const priceInfo: Record<string, { ratio: number; price: Decimal }> = {};
+    const priceInfo: Record<string, { ratio: string; price: Decimal }> = {};
     const ratioInfo = this.symbolToRoatio[symbol];
     if (ratioInfo === undefined) {
       throw new Error(`unknown symbol: ${symbol}`);
     }
     const denominator = Object.values(ratioInfo).reduce((a, b) => a + b, 0);
     for (const [provider, ratio] of Object.entries(ratioInfo)) {
-      const providerPrice = this.providers[provider].latestPrice(symbol);
+      if (this.providers[provider] === undefined) {
+        throw new Error(`Can't find provider ${provider}`);
+      }
+      let providerPrice = this.providers[provider].latestPrice(symbol);
       if (providerPrice === undefined) {
         throw new Error(`Can't get price from ${provider} for ${symbol}`);
       }
+
+      if (provider === "contracts") {
+        const coingeckoEthPrice =
+          this.providers.coingecko!.latestPrice("Crypto.ETH/USD");
+        if (coingeckoEthPrice === undefined) {
+          throw new Error("Can't get coingecko ETH price for Oracle");
+        }
+        providerPrice = providerPrice.mul(coingeckoEthPrice);
+      }
+
       price = price.add(providerPrice.mul(ratio).div(denominator));
-      priceInfo[provider] = { ratio, price: providerPrice };
+      const ratioWithDenominator = `${ratio}/${denominator}`;
+      priceInfo[provider] = {
+        ratio: ratioWithDenominator,
+        price: providerPrice,
+      };
     }
     return { price, priceInfo };
   }
@@ -124,7 +148,7 @@ export class Publisher extends EventEmitter {
     }
     let priceResult: {
       price: Decimal;
-      priceInfo: Record<string, { ratio: number; price: Decimal }>;
+      priceInfo: Record<string, { ratio: string; price: Decimal }>;
     };
     try {
       priceResult = this.mixLatestPrice(product.symbol);
@@ -158,6 +182,7 @@ export class Publisher extends EventEmitter {
   }
 
   private async onConneted() {
+    await new Promise((r) => setTimeout(r, 4000));
     this.jsonrpc.on("notify", this.onNotify.bind(this));
     try {
       const products = await this.getProductList();
@@ -179,67 +204,19 @@ export class Publisher extends EventEmitter {
     }
   }
 
-  private async loop(interval: number, fn: () => Promise<void>) {
-    try {
-      await fn();
-    } catch (err) {
-      logger.error("catch error:", err);
-    }
-
-    while (!this.stopped) {
-      const now = Math.floor(Date.now() / 1000);
-      const next = Math.ceil(now / interval) * interval;
-
-      logger.info("interval:", next - now, "next:", next);
-
-      let _r!: () => void;
-
-      await new Promise<void>((r) => {
-        this.resolves.add((_r = r));
-        setTimeout(r, (next - now) * 1000);
-      }).finally(() => this.resolves.delete(_r));
-
-      if (this.stopped) {
-        break;
-      }
-
-      try {
-        await fn();
-      } catch (err) {
-        logger.error("catch error:", err);
-      }
-
-      // sleep a while...
-      await new Promise<void>((r) => setTimeout(r, 10));
-    }
-  }
-
   start() {
-    this.coingeckoUpdateLoop = this.loop(
-      this.providers.coingecko.updateInterval,
-      () => this.providers.coingecko.updatePrice()
-    );
-
-    this.coinmarketUpdateLoop = this.loop(
-      this.providers.coinmarket.updateInterval,
-      () => this.providers.coinmarket.updatePrice()
-    );
-
+    for (const provider of Object.values(this.providers)) {
+      provider.start();
+    }
     this.jsonrpc.start();
     this.jsonrpc.ws.on("connected", this.onConneted.bind(this));
   }
 
   async stop() {
     this.stopped = true;
-
-    this.resolves.forEach((r) => r());
-
-    await this.coingeckoUpdateLoop;
-
-    await this.coinmarketUpdateLoop;
-
     this.jsonrpc.off("notify", this.onNotify);
     this.jsonrpc.off("connected", this.onConneted);
     this.jsonrpc.stop();
+    await Promise.all(Object.values(this.providers).map((p) => p.stop()));
   }
 }
