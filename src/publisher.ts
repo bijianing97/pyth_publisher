@@ -158,6 +158,7 @@ export class Publisher extends EventEmitter {
   }
 
   private async onConneted() {
+    this.jsonrpc.on("notify", this.onNotify.bind(this));
     try {
       const products = await this.getProductList();
       const symbolsToSubscribe = Object.keys(this.symbolToRoatio);
@@ -225,8 +226,7 @@ export class Publisher extends EventEmitter {
     );
 
     this.jsonrpc.start();
-    this.jsonrpc.on("notify", this.onNotify.bind(this));
-    this.jsonrpc.on("connected", this.onConneted.bind(this));
+    this.jsonrpc.ws.on("connected", this.onConneted.bind(this));
   }
 
   async stop() {

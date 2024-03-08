@@ -1,6 +1,7 @@
 import axios from "axios";
 import Decimal from "decimal.js";
 import { Provider } from "./Iprovider";
+import { logger } from "../logger/logger";
 
 type Coin = {
   pythSymbol: string;
@@ -48,6 +49,7 @@ export class CoingeckoProvider implements Provider {
       );
       this.prices.set(symbol, price);
     }
+    logger.info("CoingeckoProvider", "updatePrice", this.prices);
   }
 
   latestPrice(symbol: string) {

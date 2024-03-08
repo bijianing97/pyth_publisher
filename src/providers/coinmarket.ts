@@ -2,6 +2,7 @@
 import axios from "axios";
 import { Provider } from "./Iprovider";
 import Decimal from "decimal.js";
+import { logger } from "../logger/logger";
 
 type Coin = {
   pythSymbol: string;
@@ -44,6 +45,7 @@ export class CoinmarketProvider implements Provider {
       );
       this.prices.set(symbol, price);
     }
+    logger.info("CoinmarketProvider", "updatePrice", this.prices);
   }
 
   latestPrice(symbol: string) {
