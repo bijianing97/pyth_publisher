@@ -81,7 +81,7 @@ export class ContractsProvider implements Provider {
       }
 
       // sleep a while...
-      await new Promise<void>((r) => setTimeout(r, 10));
+      await new Promise<void>((r) => setTimeout(r, 1000));
     }
   }
 
