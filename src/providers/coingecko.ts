@@ -11,8 +11,11 @@ type Coin = {
 
 export type CoingeckoConfig = {
   coins: Coin[];
-  coingeckoApiKey: string;
   coingeckoUpdateInterval: number;
+};
+
+type CoingeckoConfigWithApiKey = CoingeckoConfig & {
+  coingeckoApiKey: string;
 };
 
 export class CoingeckoProvider implements Provider {
@@ -26,7 +29,7 @@ export class CoingeckoProvider implements Provider {
   private coingeckoUpdateLoop: Promise<void> = Promise.resolve();
   private count = 0;
 
-  constructor(config: CoingeckoConfig) {
+  constructor(config: CoingeckoConfigWithApiKey) {
     this.apiKey = config.coingeckoApiKey;
     this.updateInterval = config.coingeckoUpdateInterval;
     for (const coin of config.coins) {
@@ -134,6 +137,7 @@ export class CoingeckoProvider implements Provider {
     this.stopped = true;
     this.resolves.forEach((r) => r());
     await this.coingeckoUpdateLoop;
+    logger.info("CoingeckoProvider", "stop", "stopped");
   }
 }
 

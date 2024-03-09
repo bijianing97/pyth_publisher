@@ -73,7 +73,6 @@ export const providerConfig = {
       },
     ],
     coingeckoUpdateInterval: 10,
-    coingeckoApiKey: "",
   },
   coinmarket: {
     coins: [
@@ -114,7 +113,6 @@ export const providerConfig = {
       },
     ],
     coinmarketUpdateInterval: 10,
-    coinmarketApiKey: "",
   },
   contracts: {
     coins: [

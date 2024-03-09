@@ -23,7 +23,7 @@ type Product = {
 
 type ProductWithsubscription = Product & { subscription?: number };
 
-type PublisherConfig = {
+export type PublisherConfig = {
   url: string;
   confidenceRatioBps: number;
   pythSymbolToRatio: Record<string, Record<string, number>>;
@@ -37,7 +37,7 @@ export class Publisher extends EventEmitter {
 
   private subscriptionToProduct: Map<number, ProductWithsubscription> =
     new Map();
-  private symbolToRoatio: Record<string, Record<string, number>>;
+  private symbolToRoatio: Record<string, Record<string, number>> = {};
 
   private confidenceRatioBps: number;
   private stopped = false;
@@ -47,13 +47,22 @@ export class Publisher extends EventEmitter {
     super();
     this.confidenceRatioBps = config.confidenceRatioBps;
     this.jsonrpc = new JSONRPCWebSocket(new WebSocket({ url: config.url }));
-    this.symbolToRoatio = config.pythSymbolToRatio;
+    Object.keys(config.pythSymbolToRatio).forEach((key) => {
+      const newKey = key.replace("=", ".");
+      this.symbolToRoatio[newKey] = config.pythSymbolToRatio[key];
+    });
 
-    if (config.coingecko) {
-      this.providers.coingecko = new CoingeckoProvider(config.coingecko);
+    if (config.coingecko && process.env["COINGECKO_API_KEY"]) {
+      this.providers.coingecko = new CoingeckoProvider({
+        ...config.coingecko,
+        coingeckoApiKey: process.env["COINGECKO_API_KEY"],
+      });
     }
-    if (config.coinmarket) {
-      this.providers.coinmarket = new CoinmarketProvider(config.coinmarket);
+    if (config.coinmarket && process.env["COINMARKET_API_KEY"]) {
+      this.providers.coinmarket = new CoinmarketProvider({
+        ...config.coinmarket,
+        coinmarketApiKey: process.env["COINMARKET_API_KEY"],
+      });
     }
     if (config.contracts) {
       this.providers.contracts = new ContractsProvider(config.contracts);

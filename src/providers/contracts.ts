@@ -107,5 +107,6 @@ export class ContractsProvider implements Provider {
     this.stopped = true;
     this.resolves.forEach((r) => r());
     await Promise.all(this.orcaleLoopList);
+    logger.info("ContractsProvider", "stop", "stopped");
   }
 }

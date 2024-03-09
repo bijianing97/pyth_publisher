@@ -1,8 +1,5 @@
 node_modules
-dist
 output
 .env
 .vscode
-src/tasks/test*.ts
-src/test_scripts
-.env
+dist

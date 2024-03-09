@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "ts-node src/index.ts"
+    "build": "tsc --build tsconfig.json",
+    "startmainnet": "node dist/index.js publisher --config ./config/pythmain.jsonc",
+    "starttestnet": "node dist/index.js publisher --config ./config/pythtest.jsonc"
   },
   "author": "",
   "license": "ISC",
@@ -18,6 +20,7 @@
   "dependencies": {
     "@derivation-tech/web3-core": "^1.0.20",
     "@synfutures/v3-sdk": "^0.1.134-blast-1.7",
+    "@types/yargs": "^17.0.32",
     "@uniswap/v3-core": "^1.0.1",
     "@uniswap/v3-sdk": "^3.10.2",
     "axios": "^1.6.7",
@@ -25,7 +28,9 @@
     "decimal.js": "^10.4.3",
     "dotenv": "^16.4.5",
     "ethers": "^5.7.2",
+    "jsonc": "^2.0.0",
     "tracer": "^1.3.0",
-    "ws": "^8.16.0"
+    "ws": "^8.16.0",
+    "yargs": "^17.7.2"
   }
 }

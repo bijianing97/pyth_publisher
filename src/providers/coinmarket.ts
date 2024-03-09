@@ -12,8 +12,11 @@ type Coin = {
 
 export type CoinmarketConfig = {
   coins: Coin[];
-  coinmarketApiKey: string;
   coinmarketUpdateInterval: number;
+};
+
+type CoinmarketConfigWithApiKey = CoinmarketConfig & {
+  coinmarketApiKey: string;
 };
 
 export class CoinmarketProvider implements Provider {
@@ -27,7 +30,7 @@ export class CoinmarketProvider implements Provider {
   private coinmarketUpdateLoop: Promise<void> = Promise.resolve();
   private count = 0;
 
-  constructor(config: CoinmarketConfig) {
+  constructor(config: CoinmarketConfigWithApiKey) {
     this.apiKey = config.coinmarketApiKey;
     this.updateInterval = config.coinmarketUpdateInterval;
     for (const coin of config.coins) {
@@ -67,7 +70,6 @@ export class CoinmarketProvider implements Provider {
       id: ids.join(","),
       convert_id: convertIds.join(","),
     };
-
     const response = await axios.get(
       "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest",
       {
@@ -135,6 +137,7 @@ export class CoinmarketProvider implements Provider {
     this.stopped = true;
     this.resolves.forEach((r) => r());
     await this.coinmarketUpdateLoop;
+    logger.info("CoinmarketProvider", "stop", "stopped");
   }
 }
 
