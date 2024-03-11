@@ -2,7 +2,8 @@
 import axios from "axios";
 import { Provider } from "./Iprovider";
 import Decimal from "decimal.js";
-import { logger } from "../logger/logger";
+import { retry } from "../util";
+import { logger } from "../logger";
 
 type Coin = {
   pythSymbol: string;
@@ -46,7 +47,9 @@ export class CoinmarketProvider implements Provider {
       (p) => p.coinmarketConvertId
     );
     const convetsSet = new Set(converts);
-    const prices = await this.getPriceFromApi(symbols, Array.from(convetsSet));
+    const prices = await retry(() =>
+      this.getPriceFromApi(symbols, Array.from(convetsSet))
+    );
     for (const [symbol, product] of this.symbolToCoin.entries()) {
       const price = new Decimal(
         prices[product.coinmarketId][product.coinmarketConvertId]
@@ -131,6 +134,10 @@ export class CoinmarketProvider implements Provider {
       this.updateInterval,
       this.updatePrice.bind(this)
     );
+  }
+
+  async init() {
+    await this.updatePrice();
   }
 
   async stop() {

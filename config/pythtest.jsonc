@@ -137,7 +137,9 @@
               "timeInterval": 300,
               "blockTime": 2
             },
-            "getInterval": 10
+            "getInterval": 10,
+            "convertProvider": "coingecko",
+            "convertSymbol": "Crypto.ETH/USD"
           }
         ]
       }

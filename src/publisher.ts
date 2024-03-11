@@ -1,4 +1,5 @@
-import { logger } from "./logger/logger";
+import { logger } from "./logger";
+import { retry } from "./util";
 import EventEmitter from "events";
 import {
   Provider,
@@ -37,7 +38,7 @@ export class Publisher extends EventEmitter {
 
   private subscriptionToProduct: Map<number, ProductWithsubscription> =
     new Map();
-  private symbolToRoatio: Record<string, Record<string, number>> = {};
+  private symbolToRatio: Record<string, Record<string, number>> = {};
 
   private confidenceRatioBps: number;
   private stopped = false;
@@ -49,7 +50,7 @@ export class Publisher extends EventEmitter {
     this.jsonrpc = new JSONRPCWebSocket(new WebSocket({ url: config.url }));
     Object.keys(config.pythSymbolToRatio).forEach((key) => {
       const newKey = key.replace("=", ".");
-      this.symbolToRoatio[newKey] = config.pythSymbolToRatio[key];
+      this.symbolToRatio[newKey] = config.pythSymbolToRatio[key];
     });
 
     if (config.coingecko && process.env["COINGECKO_API_KEY"]) {
@@ -72,7 +73,7 @@ export class Publisher extends EventEmitter {
   mixLatestPrice(symbol: string) {
     let price = new Decimal(0);
     const priceInfo: Record<string, { ratio: string; price: Decimal }> = {};
-    const ratioInfo = this.symbolToRoatio[symbol];
+    const ratioInfo = this.symbolToRatio[symbol];
     if (ratioInfo === undefined) {
       throw new Error(`unknown symbol: ${symbol}`);
     }
@@ -87,12 +88,19 @@ export class Publisher extends EventEmitter {
       }
 
       if (provider === "contracts") {
-        const coingeckoEthPrice =
-          this.providers.coingecko!.latestPrice("Crypto.ETH/USD");
-        if (coingeckoEthPrice === undefined) {
-          throw new Error("Can't get coingecko ETH price for Oracle");
+        const covertProvider = this.providers.contracts.covertProvider(symbol);
+        if (covertProvider === undefined) {
+          throw new Error(`Can't find convert provider for ${provider}`);
         }
-        providerPrice = providerPrice.mul(coingeckoEthPrice);
+        const convertPrice = this.providers[
+          covertProvider.convertProvider
+        ].latestPrice(covertProvider.convertSymbol);
+        if (convertPrice === undefined) {
+          throw new Error(
+            `Can't get convert ${covertProvider} price for Oracle`
+          );
+        }
+        providerPrice = providerPrice.mul(convertPrice);
       }
 
       price = price.add(providerPrice.mul(ratio).div(denominator));
@@ -116,7 +124,9 @@ export class Publisher extends EventEmitter {
   }
 
   private async getProductList() {
-    const result = await this.jsonrpc.request("get_product_list", []);
+    const result = await retry(() =>
+      this.jsonrpc.request("get_product_list", [])
+    );
     const products: Product[] = [];
     for (const coin of result) {
       const product = {
@@ -131,71 +141,76 @@ export class Publisher extends EventEmitter {
   }
 
   private async subscribePriceSched(account: string) {
-    const result = await this.jsonrpc.request("subscribe_price_sched", [
-      account,
-    ]);
+    const result = await retry(() =>
+      this.jsonrpc.request("subscribe_price_sched", [account])
+    );
     return result.subscription;
   }
 
   private async onNotify(method: string, params: any) {
-    if (method !== "notify_price_sched") {
-      logger.warn(`unexpected method: ${method}`);
-      return;
-    }
-
-    params as { subscription: number };
-
-    logger.info(
-      "Get price schedule notify  subscription is:",
-      params.subscription
-    );
-
-    const product = this.subscriptionToProduct.get(params.subscription);
-    if (product === undefined) {
-      logger.warn(`unknown subscription: ${params.subscription}`);
-      return;
-    }
-    let priceResult: {
-      price: Decimal;
-      priceInfo: Record<string, { ratio: string; price: Decimal }>;
-    };
     try {
-      priceResult = this.mixLatestPrice(product.symbol);
-    } catch (err) {
-      logger.error("mixLatestPrice error:", err);
-      return;
-    }
+      if (method !== "notify_price_sched") {
+        logger.warn(`unexpected method: ${method}`);
+        return;
+      }
 
-    // Scale the price and confidence interval using the Pyth exponent
-    const scalePrice = priceResult.price.mul(10 ** -product.expoent);
-    const scaleConf = priceResult.price
-      .mul(this.confidenceRatioBps)
-      .div(10000)
-      .mul(10 ** -product.expoent);
+      params as { subscription: number };
 
-    logger.info(
-      `sending update_price price for ${
-        product.symbol
-      } price: ${scalePrice} conf: ${scaleConf} product_account: ${
-        product.productAccount
-      } price_account: ${product.priceAccount}
+      logger.info(
+        "Get price schedule notify  subscription is:",
+        params.subscription
+      );
+
+      const product = this.subscriptionToProduct.get(params.subscription);
+      if (product === undefined) {
+        logger.warn(`unknown subscription: ${params.subscription}`);
+        return;
+      }
+      let priceResult: {
+        price: Decimal;
+        priceInfo: Record<string, { ratio: string; price: Decimal }>;
+      };
+      try {
+        priceResult = this.mixLatestPrice(product.symbol);
+      } catch (err) {
+        logger.error("mixLatestPrice error:", err);
+        return;
+      }
+
+      // Scale the price and confidence interval using the Pyth exponent
+      const scalePrice = priceResult.price.mul(10 ** -product.expoent);
+      const scaleConf = priceResult.price
+        .mul(this.confidenceRatioBps)
+        .div(10000)
+        .mul(10 ** -product.expoent);
+
+      logger.info(
+        `sending update_price price for ${
+          product.symbol
+        } price: ${scalePrice} conf: ${scaleConf} product_account: ${
+          product.productAccount
+        } price_account: ${product.priceAccount}
        mixed price info: ${JSON.stringify(priceResult.priceInfo)}`
-    );
+      );
 
-    await this.updatePrice(
-      product.priceAccount,
-      scalePrice.toNumber(),
-      scaleConf.toNumber(),
-      "trading"
-    );
+      await this.updatePrice(
+        product.priceAccount,
+        scalePrice.toNumber(),
+        scaleConf.toNumber(),
+        "trading"
+      );
+    } catch (err) {
+      logger.error("onNotify error:", err);
+    }
   }
 
   private async onConneted() {
-    await new Promise((r) => setTimeout(r, 4000));
-    this.jsonrpc.on("notify", this.onNotify.bind(this));
     try {
+      // this.subscriptionToProduct sweep
+      this.subscriptionToProduct = new Map();
+
       const products = await this.getProductList();
-      const symbolsToSubscribe = Object.keys(this.symbolToRoatio);
+      const symbolsToSubscribe = Object.keys(this.symbolToRatio);
       for (const product of products) {
         if (symbolsToSubscribe.includes(product.symbol)) {
           const subscription = await this.subscribePriceSched(
@@ -209,8 +224,13 @@ export class Publisher extends EventEmitter {
       }
     } catch (err) {
       logger.error("Publisher", "subscribe price sched error", err);
+      await new Promise((r) => setTimeout(r, 1000));
       this.jsonrpc.ws.reconnect();
     }
+  }
+
+  async init() {
+    await Promise.all(Object.values(this.providers).map((p) => p.init()));
   }
 
   start() {
@@ -219,6 +239,7 @@ export class Publisher extends EventEmitter {
     }
     this.jsonrpc.start();
     this.jsonrpc.ws.on("connected", this.onConneted.bind(this));
+    this.jsonrpc.on("notify", this.onNotify.bind(this));
   }
 
   async stop() {

@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/async-retry": "^1.4.8",
     "@types/ws": "^8.5.10",
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",

@@ -5,7 +5,7 @@ import { jsonc } from "jsonc";
 import fs from "fs";
 import path from "path";
 import { Publisher, PublisherConfig } from "./publisher";
-import { logger } from "./logger/logger";
+import { logger } from "./logger";
 
 const args = yargs(hideBin(process.argv));
 
@@ -75,6 +75,7 @@ defineCommand(
     });
 
     try {
+      await publisher.init();
       publisher.start();
     } catch (err) {
       logger.error("Main", "error:", err);

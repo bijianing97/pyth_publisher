@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import EventEmitter from "events";
 import WS from "ws";
-import { logger } from "./logger/logger";
+import { logger } from "./logger";
 
 export interface WebSocketConfig {
   // remote server URL

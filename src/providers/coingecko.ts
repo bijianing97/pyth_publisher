@@ -1,7 +1,8 @@
 import axios from "axios";
 import Decimal from "decimal.js";
 import { Provider } from "./Iprovider";
-import { logger } from "../logger/logger";
+import { logger } from "../logger";
+import { retry } from "../util";
 
 type Coin = {
   pythSymbol: string;
@@ -45,11 +46,11 @@ export class CoingeckoProvider implements Provider {
       (p) => p.coingeckoVcCurrencie
     );
     const vsCurrenciesSet = new Set(vsCurrencies);
-    const prices = await this.getPriceFromApi(
-      ids,
-      Array.from(vsCurrenciesSet),
-      "18"
+
+    const prices = await retry(() =>
+      this.getPriceFromApi(ids, Array.from(vsCurrenciesSet), "18")
     );
+
     for (const [symbol, product] of this.symbolToCoin.entries()) {
       const price = new Decimal(
         prices[product.coingeckoId][product.coingeckoVcCurrencie]
@@ -131,6 +132,10 @@ export class CoingeckoProvider implements Provider {
       this.updateInterval,
       this.updatePrice.bind(this)
     );
+  }
+
+  async init() {
+    await this.updatePrice();
   }
 
   async stop() {
