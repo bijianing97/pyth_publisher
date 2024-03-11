@@ -53,14 +53,17 @@ export class ContractsProvider implements Provider {
     }
   }
 
+  // Get the latest price of the product
   latestPrice(symbol: string) {
     return this.prices.get(symbol);
   }
 
+  // Get the price of a product from the coingecko API
   covertProvider(symbol: string) {
     return this.smybolToConvertProvider.get(symbol);
   }
 
+  // Update the twap of the products from the uniswapV3Oracle
   async updateTwap(symol: string, oracle: UniswapV3Oracle) {
     const twap = (await retry(() => oracle.getAverages())).twap;
     const twapDecimal = new Decimal(twap.toSignificant(6));
@@ -110,6 +113,7 @@ export class ContractsProvider implements Provider {
     }
   }
 
+  // Start the provider, start all oracle update loops
   start() {
     for (const [symbol, oracleWithInterval] of this.symbolToOracle.entries()) {
       this.orcaleLoopList.push(
@@ -120,6 +124,7 @@ export class ContractsProvider implements Provider {
     }
   }
 
+  // Initialize the provider, get price once
   async init() {
     await Promise.all(
       Array.from(this.symbolToOracle.entries()).map(

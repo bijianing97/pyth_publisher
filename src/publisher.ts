@@ -70,6 +70,7 @@ export class Publisher extends EventEmitter {
     }
   }
 
+  // Get the mixed price of the product, the mixed price is the weighted average of the prices from the providers
   mixLatestPrice(symbol: string) {
     let price = new Decimal(0);
     const priceInfo: Record<string, { ratio: string; price: Decimal }> = {};
@@ -114,6 +115,7 @@ export class Publisher extends EventEmitter {
   }
 
   // jsonRpc methods
+  // Update the price of the product to the Pyth agent
   private async updatePrice(
     account: string,
     price: number,
@@ -140,6 +142,7 @@ export class Publisher extends EventEmitter {
     return products;
   }
 
+  // Subscribe to the price schedule of the product to the Pyth agent
   private async subscribePriceSched(account: string) {
     const result = await retry(() =>
       this.jsonrpc.request("subscribe_price_sched", [account])
@@ -204,6 +207,7 @@ export class Publisher extends EventEmitter {
     }
   }
 
+  // subscribe to the price schedule of the product in connected event
   private async onConneted() {
     try {
       // this.subscriptionToProduct sweep
@@ -229,10 +233,12 @@ export class Publisher extends EventEmitter {
     }
   }
 
+  // Initialize the providers
   async init() {
     await Promise.all(Object.values(this.providers).map((p) => p.init()));
   }
 
+  // Start the providers
   start() {
     for (const provider of Object.values(this.providers)) {
       provider.start();
@@ -242,6 +248,7 @@ export class Publisher extends EventEmitter {
     this.jsonrpc.on("notify", this.onNotify.bind(this));
   }
 
+  // Stop the providers
   async stop() {
     this.stopped = true;
     this.jsonrpc.off("notify", this.onNotify);

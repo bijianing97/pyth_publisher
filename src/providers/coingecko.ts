@@ -38,6 +38,7 @@ export class CoingeckoProvider implements Provider {
     }
   }
 
+  // Update the price of the products from the coingecko API
   async updatePrice() {
     const ids = Array.from(this.symbolToCoin.values()).map(
       (p) => p.coingeckoId
@@ -60,11 +61,13 @@ export class CoingeckoProvider implements Provider {
     logger.info("CoingeckoProvider", "updatePrice", this.prices, this.count);
   }
 
+  // Get the latest price of the product
   latestPrice(symbol: string) {
     const price = this.prices.get(symbol);
     return price;
   }
 
+  // Get the price of the products from the coingecko API
   async getPriceFromApi(
     ids: string[],
     vs_currencies: string[],
@@ -127,6 +130,7 @@ export class CoingeckoProvider implements Provider {
     }
   }
 
+  // Start the coingecko update loop
   start() {
     this.coingeckoUpdateLoop = this.loop(
       this.updateInterval,
@@ -134,6 +138,7 @@ export class CoingeckoProvider implements Provider {
     );
   }
 
+  // Initialize the coingecko provider, get price once
   async init() {
     await this.updatePrice();
   }

@@ -39,6 +39,7 @@ export class CoinmarketProvider implements Provider {
     }
   }
 
+  // Update the price of the products from the coinmarket API
   async updatePrice() {
     const symbols = Array.from(this.symbolToCoin.values()).map(
       (p) => p.coinmarketId
@@ -59,11 +60,13 @@ export class CoinmarketProvider implements Provider {
     logger.info("CoinmarketProvider", "updatePrice", this.prices, this.count);
   }
 
+  // Get the latest price of the product
   latestPrice(symbol: string) {
     const price = this.prices.get(symbol);
     return price;
   }
 
+  // Get the price of the products from the coinmarket API
   async getPriceFromApi(ids: string[], convertIds: string[]) {
     const headers = {
       "x-cmc_pro_api_key": this.apiKey,
@@ -129,6 +132,7 @@ export class CoinmarketProvider implements Provider {
     }
   }
 
+  // Start the coinmarket provider
   start() {
     this.coinmarketUpdateLoop = this.loop(
       this.updateInterval,
@@ -136,6 +140,7 @@ export class CoinmarketProvider implements Provider {
     );
   }
 
+  // Initialize the coinmarket provider, get price once
   async init() {
     await this.updatePrice();
   }
