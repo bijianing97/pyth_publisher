@@ -90,7 +90,7 @@
                 },
                 "fee": 3000
               },
-              "timeInterval": 300,
+              "timeInterval": 150,
               "blockTime": 2
             },
             "getInterval": 10,
