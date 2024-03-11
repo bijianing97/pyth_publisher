@@ -193,7 +193,9 @@ export class Publisher extends EventEmitter {
         } price: ${scalePrice} conf: ${scaleConf} product_account: ${
           product.productAccount
         } price_account: ${product.priceAccount}
-       mixed price info: ${JSON.stringify(priceResult.priceInfo)}`
+       mixed price info: mixed price is :${priceResult.price}  ${JSON.stringify(
+          priceResult.priceInfo
+        )}`
       );
 
       await this.updatePrice(
