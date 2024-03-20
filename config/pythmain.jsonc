@@ -88,10 +88,10 @@
                 },
                 "fee": 3000
               },
-              "timeInterval": 150,
+              "timeInterval": 60,
               "blockTime": 2
             },
-            "getInterval": 10,
+            "getInterval": 2,
             "convertProvider": "coingecko",
             "convertSymbol": "Crypto.ETH/USD"
           }
