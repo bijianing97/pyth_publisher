@@ -2,7 +2,7 @@
   "publisher": {
     "publisherConfig": {
       "url": "ws://127.0.0.1:8911",
-      "confidenceRatioBps": 10,
+      "confidenceRatioBps": 5,
       "pythSymbolToRatio": {
         "Crypto=USDB/USD": {
           "contracts": 100
