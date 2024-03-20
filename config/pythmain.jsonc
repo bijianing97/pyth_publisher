@@ -5,9 +5,7 @@
       "confidenceRatioBps": 10,
       "pythSymbolToRatio": {
         "Crypto=USDB/USD": {
-          "contracts": 50,
-          "coingecko": 25,
-          "coinmarket": 25
+          "contracts": 100
         },
         "Crypto=ETH/BTC": {
           "coinmarket": 50,
